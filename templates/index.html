@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>寮 喫食届</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, sans-serif; background: #f5f5f7; color: #1c1c1e; }
+
+    header {
+      background: #fff;
+      border-bottom: 1px solid #e5e5ea;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+    }
+    .header-row {
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header h1 { font-size: 18px; font-weight: 700; }
+    .header-actions { display: flex; gap: 8px; align-items: center; }
+
+    /* ヘッダーボタン共通 */
+    .header-actions button {
+      border: none;
+      border-radius: 8px;
+      padding: 8px 0;
+      width: 80px;
+      font-size: 13px;
+      cursor: pointer;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    #refresh-btn  { background: #e5e5ea; color: #1c1c1e; }
+    #logout-btn   { background: #e5e5ea; color: #636366; }
+    #save-btn     { background: #007aff; color: #fff; font-weight: 700; display: none; }
+    #revert-btn   { background: #e5e5ea; color: #636366; display: none; }
+
+    #refresh-btn:disabled { opacity: 0.5; cursor: default; }
+    #save-btn:disabled    { background: #aeaeb2; cursor: default; }
+    #save-btn.visible, #revert-btn.visible { display: block; }
+
+    .status-bar {
+      text-align: center;
+      padding: 8px;
+      font-size: 13px;
+      color: #636366;
+      background: #fff;
+      border-bottom: 1px solid #e5e5ea;
+    }
+
+    .select-all-bar {
+      padding: 6px 16px;
+      background: #fff;
+      border-top: 1px solid #e5e5ea;
+    }
+    #select-all-btn {
+      background: #e5e5ea;
+      color: #1c1c1e;
+      border: none;
+      border-radius: 8px;
+      padding: 6px 16px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .day-group { padding: 12px 16px 0; }
+    .day-group:last-child { padding-bottom: 12px; }
+
+    .day-header {
+      font-size: 13px;
+      font-weight: 600;
+      color: #636366;
+      padding: 4px 0 6px;
+    }
+    .day-header.today-header { color: #007aff; }
+
+    .meal-cards { display: flex; flex-direction: column; gap: 8px; }
+
+    .meal-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 12px 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .meal-card.today { border: 2px solid #007aff; }
+    .meal-card.deadline-passed { opacity: 0.55; }
+    .meal-card.pending { border: 2px solid #ff9500; }
+    .meal-card.holiday { opacity: 0.5; }
+
+    .meal-header { display: flex; justify-content: space-between; align-items: center; }
+    .meal-type-label { font-size: 14px; font-weight: 700; }
+    .meal-badge {
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+    .badge-registered { background: #d1f7e0; color: #1a7a3f; }
+    .badge-not-registered { background: #fde8e8; color: #c0392b; }
+    .badge-deadline-yes { background: #d1f7e0; color: #1a7a3f; }
+    .badge-deadline-no { background: #e5e5ea; color: #636366; }
+    .badge-holiday { background: #f0e6ff; color: #6b21a8; }
+    .badge-pending { background: #fff3cd; color: #856404; }
+
+    .meal-menu { font-size: 13px; color: #3a3a3c; line-height: 1.5; }
+    .meal-menu.empty { color: #aeaeb2; font-style: italic; }
+
+    .meal-toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0 2px;
+    }
+    .toggle-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1c1c1e;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+      line-height: 1;
+    }
+    .toggle-label input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+      accent-color: #007aff;
+      flex-shrink: 0;
+      vertical-align: middle;
+      margin: 0;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #aeaeb2;
+      font-size: 15px;
+    }
+
+    .loading { text-align: center; padding: 40px; color: #636366; }
+
+    .cal-sync-bar {
+      padding: 6px 16px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #f0f4ff;
+      border-top: 1px solid #dce4ff;
+      color: #3a3a6e;
+      transition: opacity 0.4s;
+    }
+    .cal-sync-bar.hidden { display: none; }
+    .cal-sync-bar.done { background: #f0fff4; border-color: #c3e6cb; color: #1a5c34; }
+    .cal-sync-bar.error { background: #fff0f0; border-color: #f5c6cb; color: #721c24; }
+
+    .cal-sync-spinner {
+      width: 12px; height: 12px;
+      border: 2px solid #aab5ff;
+      border-top-color: #3a3aff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .cal-sync-progress {
+      flex: 1;
+      height: 4px;
+      background: #dce4ff;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .cal-sync-progress-fill {
+      height: 100%;
+      background: #3a3aff;
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+    .cal-sync-bar.done .cal-sync-progress-fill { background: #28a745; }
+    .cal-sync-bar.error .cal-sync-progress-fill { background: #dc3545; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <h1>🍱 喫食届</h1>
+      <div class="header-actions">
+        <button id="revert-btn" onclick="revertChanges()">元に戻す</button>
+        <button id="save-btn" onclick="saveChanges()">保存</button>
+        <button id="refresh-btn" onclick="refresh()">D-Port同期</button>
+        <button id="logout-btn" onclick="logout()">ログアウト</button>
+      </div>
+    </div>
+    <div class="select-all-bar">
+      <button id="select-all-btn" onclick="toggleSelectAll()">すべて □</button>
+    </div>
+    <div class="cal-sync-bar hidden" id="cal-sync-bar">
+      <div class="cal-sync-spinner" id="cal-sync-spinner"></div>
+      <span id="cal-sync-msg">カレンダー同期中...</span>
+      <div class="cal-sync-progress"><div class="cal-sync-progress-fill" id="cal-sync-fill"></div></div>
+    </div>
+  </header>
+  <div class="status-bar" id="status-bar">読み込み中...</div>
+  <div id="meal-list">
+    <div class="loading">データを取得中...</div>
+  </div>
+
+  <script>
+    const today = new Date().toISOString().split("T")[0];
+
+    // key: "${date}_${meal_type}", value: {date, meal_type, registered (desired state)}
+    let pendingChanges = {};
+    // original registered state per key
+    let originalState = {};
+
+    function formatDate(dateStr) {
+      const d = new Date(dateStr + "T00:00:00");
+      const days = ["日", "月", "火", "水", "木", "金", "土"];
+      return `${d.getMonth() + 1}/${d.getDate()}(${days[d.getDay()]})`;
+    }
+
+    function pendingKey(date, mealType) {
+      return `${date}_${mealType}`;
+    }
+
+    function updateSaveButton() {
+      const count = Object.keys(pendingChanges).length;
+      const saveBtn = document.getElementById("save-btn");
+      const revertBtn = document.getElementById("revert-btn");
+      if (count > 0) {
+        saveBtn.textContent = `保存 (${count}件)`;
+        saveBtn.classList.add("visible");
+        revertBtn.classList.add("visible");
+      } else {
+        saveBtn.classList.remove("visible");
+        revertBtn.classList.remove("visible");
+      }
+    }
+
+    function revertChanges() {
+      pendingChanges = {};
+      const checkboxes = document.querySelectorAll(".meal-toggle input[type='checkbox']");
+      checkboxes.forEach(cb => {
+        const card = cb.closest(".meal-card");
+        const date = cb.dataset.date;
+        const mealType = cb.dataset.mealType;  // data-meal-type → mealType
+        const key = pendingKey(date, mealType);
+        const orig = originalState[key];
+        cb.checked = orig;
+        card.classList.remove("pending");
+        const badge = card.querySelector(".meal-badge");
+        badge.className = `meal-badge ${orig ? "badge-registered" : "badge-not-registered"}`;
+        badge.textContent = orig ? "提出済" : "未提出";
+      });
+      updateSaveButton();
+      updateSelectAllButton();
+    }
+
+    function updateSelectAllButton() {
+      const checkboxes = document.querySelectorAll(".meal-toggle input[type='checkbox']");
+      const allChecked = checkboxes.length > 0 && [...checkboxes].every(cb => cb.checked);
+      document.getElementById("select-all-btn").textContent = allChecked ? "すべて ☑" : "すべて □";
+    }
+
+    function toggleSelectAll() {
+      const checkboxes = document.querySelectorAll(".meal-toggle input[type='checkbox']");
+      const allChecked = [...checkboxes].every(cb => cb.checked);
+      const target = !allChecked;
+      checkboxes.forEach(cb => {
+        if (cb.checked !== target) {
+          cb.checked = target;
+          cb.dispatchEvent(new Event("change"));
+        }
+      });
+      updateSelectAllButton();
+    }
+
+    function onToggle(date, mealType, checkbox) {
+      const key = pendingKey(date, mealType);
+      const desired = checkbox.checked;
+      if (desired === originalState[key]) {
+        delete pendingChanges[key];
+      } else {
+        pendingChanges[key] = { date, meal_type: mealType, registered: desired };
+      }
+      // update card style
+      const card = checkbox.closest(".meal-card");
+      card.classList.toggle("pending", pendingChanges[key] !== undefined);
+      // update badge
+      const badge = card.querySelector(".meal-badge");
+      if (pendingChanges[key] !== undefined) {
+        badge.className = "meal-badge badge-pending";
+        badge.textContent = desired ? "提出予定" : "取消予定";
+      } else {
+        const orig = originalState[key];
+        badge.className = `meal-badge ${orig ? "badge-registered" : "badge-not-registered"}`;
+        badge.textContent = orig ? "提出済" : "未提出";
+      }
+      updateSaveButton();
+      updateSelectAllButton();
+    }
+
+    function renderMeals(meals) {
+      const container = document.getElementById("meal-list");
+      if (!meals.length) {
+        container.innerHTML = '<div class="empty-state">データがありません。<br>「更新」ボタンを押してください。</div>';
+        return;
+      }
+
+      // store original state
+      originalState = {};
+      for (const meal of meals) {
+        originalState[pendingKey(meal.date, meal.meal_type)] = !!meal.registered;
+      }
+
+      // clear pending changes that no longer apply
+      for (const key of Object.keys(pendingChanges)) {
+        if (!(key in originalState)) delete pendingChanges[key];
+      }
+
+      const byDate = {};
+      for (const meal of meals) {
+        if (!byDate[meal.date]) byDate[meal.date] = [];
+        byDate[meal.date].push(meal);
+      }
+
+      const html = Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b)).map(([date, dayMeals]) => {
+        const isToday = date === today;
+        const mealCards = dayMeals.map(meal => {
+          const key = pendingKey(meal.date, meal.meal_type);
+          const deadlinePassed = meal.deadline_passed;
+          const registered = !!meal.registered;
+          const hasPending = key in pendingChanges;
+          const desiredState = hasPending ? pendingChanges[key].registered : registered;
+
+          const noMenu = !meal.menu;
+
+          let badgeClass, badgeText;
+          if (meal.is_holiday) {
+            badgeClass = "badge-holiday";
+            badgeText = "お休み";
+          } else if (noMenu) {
+            badgeClass = "badge-deadline-no";
+            badgeText = "欠食";
+          } else if (deadlinePassed) {
+            badgeClass = registered ? "badge-deadline-yes" : "badge-deadline-no";
+            badgeText = registered ? "確定" : "欠食";
+          } else if (hasPending) {
+            badgeClass = "badge-pending";
+            badgeText = desiredState ? "提出予定" : "取消予定";
+          } else if (registered) {
+            badgeClass = "badge-registered";
+            badgeText = "提出済";
+          } else {
+            badgeClass = "badge-not-registered";
+            badgeText = "未提出";
+          }
+
+          const menuText = noMenu
+            ? `<div class="meal-menu empty">欠食</div>`
+            : `<div class="meal-menu">${meal.menu}</div>`;
+
+          let toggleHtml = "";
+          if (!deadlinePassed && !meal.is_holiday && !noMenu) {
+            const checked = desiredState ? "checked" : "";
+            toggleHtml = `<div class="meal-toggle">
+              <label class="toggle-label">
+                <input type="checkbox" ${checked}
+                  data-date="${meal.date}" data-meal-type="${meal.meal_type}"
+                  onchange="onToggle('${meal.date}','${meal.meal_type}',this)">
+                食べる
+              </label>
+            </div>`;
+          }
+
+          const isPending = hasPending;
+          return `
+            <div class="meal-card ${isToday ? 'today' : ''} ${meal.is_holiday || noMenu ? 'holiday' : (deadlinePassed ? 'deadline-passed' : '')} ${isPending ? 'pending' : ''}">
+              <div class="meal-header">
+                <span class="meal-type-label">${meal.meal_type}</span>
+                <span class="meal-badge ${badgeClass}">${badgeText}</span>
+              </div>
+              ${menuText}
+              ${toggleHtml}
+            </div>`;
+        }).join("");
+
+        return `
+          <div class="day-group">
+            <div class="day-header ${isToday ? 'today-header' : ''}">${formatDate(date)}${isToday ? " 今日" : ""}</div>
+            <div class="meal-cards">${mealCards}</div>
+          </div>`;
+      }).join("");
+
+      container.innerHTML = html;
+      updateSaveButton();
+    }
+
+    function setStatus(meals, suffix = "", isError = false) {
+      const registered = meals.filter(m => m.registered).length;
+      const bar = document.getElementById("status-bar");
+      bar.textContent = `${meals.length} 食分 / 提出済 ${registered} 食${suffix ? "　" + suffix : ""}`;
+      bar.style.color = isError ? "#c0392b" : "#636366";
+    }
+
+    function scrollToToday() {
+      const el = document.querySelector(".today-header, .meal-card.today");
+      if (!el) return;
+      const headerH = document.querySelector("header")?.offsetHeight || 0;
+      const top = el.getBoundingClientRect().top + window.scrollY - headerH - 8;
+      window.scrollTo({ top, behavior: "smooth" });
+    }
+
+    async function loadMeals() {
+      const res = await fetch("/api/meals");
+      if (handleUnauthorized(res)) return;
+      const meals = await res.json();
+      renderMeals(meals);
+      setStatus(meals);
+      scrollToToday();
+    }
+
+    async function saveChanges() {
+      const changes = Object.values(pendingChanges);
+      if (!changes.length) return;
+      const btn = document.getElementById("save-btn");
+      btn.disabled = true;
+      btn.textContent = "保存中...";
+      document.getElementById("status-bar").textContent = `${changes.length} 件を届出中...`;
+      try {
+        const res = await fetch("/api/batch-update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(changes)
+        });
+        if (handleUnauthorized(res)) return;
+        const data = await res.json();
+        if (!res.ok) {
+          alert("届出に失敗しました: " + (data.detail || "不明なエラー"));
+          await loadMeals();
+        } else {
+          pendingChanges = {};
+          renderMeals(data.meals);
+          setStatus(data.meals, "✅ 届出完了");
+          startCalSyncPolling();
+        }
+      } catch (e) {
+        alert("通信エラーが発生しました");
+      }
+      btn.disabled = false;
+    }
+
+    async function refresh() {
+      const btn = document.getElementById("refresh-btn");
+      btn.disabled = true;
+      btn.textContent = "取得中...";
+      document.getElementById("status-bar").textContent = "D-Portからデータ取得中...";
+      try {
+        const res = await fetch("/api/refresh", { method: "POST" });
+        if (handleUnauthorized(res)) return;
+        const data = await res.json();
+        pendingChanges = {};
+        renderMeals(data.meals);
+        setStatus(data.meals, "✅ 更新完了");
+        scrollToToday();
+        startCalSyncPolling();
+      } catch (e) {
+        document.getElementById("status-bar").textContent = "❌ 更新に失敗しました";
+        document.getElementById("status-bar").style.color = "#c0392b";
+      }
+      btn.disabled = false;
+      btn.textContent = "更新";
+    }
+
+    let _calSyncTimer = null;
+    function startCalSyncPolling() {
+      const bar = document.getElementById("cal-sync-bar");
+      const msg = document.getElementById("cal-sync-msg");
+      const spinner = document.getElementById("cal-sync-spinner");
+      const fill = document.getElementById("cal-sync-fill");
+
+      bar.className = "cal-sync-bar";
+      msg.textContent = "カレンダー同期中...";
+      spinner.style.display = "";
+      fill.style.width = "0%";
+      fill.style.animation = "";
+
+      if (_calSyncTimer) clearInterval(_calSyncTimer);
+      _calSyncTimer = setInterval(async () => {
+        try {
+          const res = await fetch("/api/calendar-sync-status");
+          if (!res.ok) return;
+          const data = await res.json();
+
+          if (data.status === "running") {
+            if (data.total > 0) {
+              const pct = Math.round(data.done / data.total * 100);
+              fill.style.animation = "none";
+              fill.style.width = pct + "%";
+              msg.textContent = `カレンダー同期中... ${data.done}/${data.total}件`;
+            }
+            return;
+          }
+
+          clearInterval(_calSyncTimer);
+          spinner.style.display = "none";
+          fill.style.animation = "none";
+          if (data.status === "done") {
+            fill.style.width = "100%";
+            bar.className = "cal-sync-bar done";
+            msg.textContent = `📅 カレンダー同期完了`;
+          } else if (data.status === "error") {
+            bar.className = "cal-sync-bar error";
+            msg.textContent = `⚠️ カレンダー同期失敗: ${data.message}`;
+          }
+          setTimeout(() => { bar.className = "cal-sync-bar hidden"; }, 4000);
+        } catch (e) {}
+      }, 2000);
+    }
+
+    function handleUnauthorized(res) {
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return true;
+      }
+      return false;
+    }
+
+    async function logout() {
+      await fetch("/api/logout", { method: "POST" });
+      window.location.href = "/login";
+    }
+
+    if (new URLSearchParams(location.search).get("autorefresh") === "1") {
+      history.replaceState({}, "", "/");
+      refresh();
+    } else {
+      loadMeals();
+    }
+  </script>
+</body>
+</html>

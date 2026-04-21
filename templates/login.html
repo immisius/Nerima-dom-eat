@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>ログイン - 寮 喫食届</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, sans-serif;
+      background: #f5f5f7;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 18px;
+      padding: 32px 28px;
+      width: 100%;
+      max-width: 360px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.10);
+    }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+    .subtitle { font-size: 13px; color: #636366; margin-bottom: 28px; }
+    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+    label { font-size: 13px; font-weight: 600; color: #3a3a3c; }
+    input {
+      border: 1.5px solid #d1d1d6;
+      border-radius: 10px;
+      padding: 11px 14px;
+      font-size: 16px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus { border-color: #007aff; }
+    .btn {
+      width: 100%;
+      padding: 13px;
+      background: #007aff;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .btn:disabled { background: #aeaeb2; cursor: default; }
+    .error {
+      background: #fde8e8;
+      color: #c0392b;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .note { font-size: 12px; color: #aeaeb2; margin-top: 16px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🍱 喫食届</h1>
+    <p class="subtitle">D-Portのログイン情報を入力してください</p>
+    <div class="error" id="error-msg"></div>
+    <div class="field">
+      <label>企業コード</label>
+      <input type="text" id="company-code" autocomplete="organization" inputmode="text">
+    </div>
+    <div class="field">
+      <label>ユーザーID</label>
+      <input type="text" id="user-id" autocomplete="username" inputmode="text">
+    </div>
+    <div class="field">
+      <label>パスワード</label>
+      <input type="password" id="password" autocomplete="current-password">
+    </div>
+    <button class="btn" id="login-btn" onclick="login()">ログイン</button>
+    <p class="note">入力した認証情報はサーバに保存されません</p>
+  </div>
+
+  <script>
+    async function login() {
+      const btn = document.getElementById("login-btn");
+      const errEl = document.getElementById("error-msg");
+      errEl.style.display = "none";
+      btn.disabled = true;
+      btn.textContent = "ログイン中...";
+
+      try {
+        const res = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            company_code: document.getElementById("company-code").value,
+            user_id: document.getElementById("user-id").value,
+            password: document.getElementById("password").value,
+          })
+        });
+        if (res.ok) {
+          window.location.href = "/?autorefresh=1";
+        } else {
+          const data = await res.json();
+          errEl.textContent = data.detail || "ログインに失敗しました";
+          errEl.style.display = "block";
+        }
+      } catch (e) {
+        errEl.textContent = "通信エラーが発生しました";
+        errEl.style.display = "block";
+      }
+      btn.disabled = false;
+      btn.textContent = "ログイン";
+    }
+
+    document.addEventListener("keydown", e => {
+      if (e.key === "Enter") login();
+    });
+  </script>
+</body>
+</html>

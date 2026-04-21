@@ -1,0 +1,8 @@
+.env
+token.json
+credentials.json
+meals.db
+__pycache__/
+*.pyc
+debug_*.png
+.playwright/

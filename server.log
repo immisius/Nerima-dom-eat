@@ -1,0 +1,56 @@
+INFO:     Started server process [14468]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:53601 - "POST /api/logout HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53601 - "GET /login HTTP/1.1" 200 OK
+[Timing] chromium launch: 0.4s
+[Timing] D-Port login: 8.0s
+[Timing] /api/login (browser起動+ログイン): 8.4s
+INFO:     127.0.0.1:53603 - "POST /api/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53603 - "GET /?autorefresh=1 HTTP/1.1" 200 OK
+[Timing] get_user_browser: 0.0s
+[Timing] get_menu_urls (2件): 1.2s
+[Timing] scrape_menu_page: 2.1s
+[Timing] scrape_menu_page: 0.9s
+[Timing] scrape_eating_page (122件): 1.3s
+[Timing] fetch_all_data: 5.5s
+[Timing] /api/refresh 合計: 5.5s
+INFO:     127.0.0.1:53603 - "POST /api/refresh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53603 - "GET /api/calendar-sync-status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53603 - "GET /api/calendar-sync-status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53603 - "GET /api/calendar-sync-status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53603 - "GET /api/calendar-sync-status HTTP/1.1" 200 OK
+[Calendar] update:122 insert:0 合計:122件
+[Timing] sync_meals (BG): 8.9s
+INFO:     127.0.0.1:53603 - "GET /api/calendar-sync-status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53640 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53640 - "GET /api/meals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53664 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53664 - "GET /api/meals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET /api/meals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET /api/meals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET /api/meals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET /api/meals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET /api/meals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET /api/meals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET /api/meals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET /api/meals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET /api/meals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET /api/meals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET /api/meals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53666 - "GET /api/meals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53682 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53682 - "GET /api/meals HTTP/1.1" 200 OK
