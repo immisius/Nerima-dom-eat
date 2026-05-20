@@ -6,3 +6,5 @@ __pycache__/
 *.pyc
 debug_*.png
 .playwright/
+.venv/
+server.log

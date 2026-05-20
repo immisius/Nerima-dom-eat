@@ -16,10 +16,15 @@ class UserBrowser:
         from scraper import _login
         t = time.time()
         self._pw = await async_playwright().start()
-        self._browser = await self._pw.chromium.launch(headless=True)
+        self._browser = await self._pw.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage"],
+        )
         print(f"[Timing] chromium launch: {time.time()-t:.1f}s")
         t = time.time()
-        self._context = await self._browser.new_context()
+        self._context = await self._browser.new_context(
+            viewport={"width": 390, "height": 844}
+        )
         page = await self._context.new_page()
         await _login(page, company_code, user_id_str, password)
         await page.close()

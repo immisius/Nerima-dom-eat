@@ -20,6 +20,7 @@ templates = Jinja2Templates(directory="templates")
 
 # user_key → {"status": "idle"|"running"|"done"|"error", "message": str}
 _cal_sync_status: dict[str, dict] = {}
+_menu_fetch_status: dict[str, dict] = {}
 
 
 @asynccontextmanager
@@ -80,7 +81,8 @@ async def api_login(body: LoginRequest, response: Response):
     try:
         await browser_manager.get_or_create(token, body.company_code, body.user_id, body.password)
         print(f"[Timing] /api/login (browser起動+ログイン): {time.time()-t0:.1f}s")
-    except Exception:
+    except Exception as e:
+        print(f"[Login ERROR] {type(e).__name__}: {e}")
         await browser_manager.close_and_remove(token)
         raise HTTPException(status_code=401, detail="ログインに失敗しました。入力内容を確認してください。")
 
@@ -114,7 +116,42 @@ async def index(request: Request):
 
 @app.get("/api/meals")
 async def api_meals(session: dict = Depends(current_session)):
-    return get_all_meals(session["user_key"])
+    meals = get_all_meals(session["user_key"])
+    total = len(meals)
+    changeable = sum(1 for m in meals if not m["deadline_passed"] and not m["is_holiday"])
+    by_month = {}
+    for m in meals:
+        ym = m["date"][:7]
+        if ym not in by_month:
+            by_month[ym] = {"total": 0, "changeable": 0, "registered": 0}
+        by_month[ym]["total"] += 1
+        if not m["deadline_passed"] and not m["is_holiday"]:
+            by_month[ym]["changeable"] += 1
+        if m["registered"]:
+            by_month[ym]["registered"] += 1
+    print(f"[meals] {session['user_key']} total={total} changeable={changeable} by_month={by_month}")
+    return meals
+
+
+@app.get("/api/debug/meals")
+async def api_debug_meals(session: dict = Depends(current_session)):
+    """DBの喫食データ統計（デバッグ用）"""
+    meals = get_all_meals(session["user_key"])
+    by_month = {}
+    for m in meals:
+        ym = m["date"][:7]
+        if ym not in by_month:
+            by_month[ym] = {"total": 0, "changeable": 0, "deadline_passed": 0, "is_holiday": 0, "registered": 0}
+        by_month[ym]["total"] += 1
+        if m["deadline_passed"]:
+            by_month[ym]["deadline_passed"] += 1
+        if m["is_holiday"]:
+            by_month[ym]["is_holiday"] += 1
+        if not m["deadline_passed"] and not m["is_holiday"]:
+            by_month[ym]["changeable"] += 1
+        if m["registered"]:
+            by_month[ym]["registered"] += 1
+    return {"user_key": session["user_key"], "total": len(meals), "by_month": by_month}
 
 
 class MealBatchItem(BaseModel):
@@ -125,23 +162,29 @@ class MealBatchItem(BaseModel):
 
 @app.post("/api/batch-update")
 async def api_batch_update(changes: list[MealBatchItem], session: dict = Depends(current_session)):
-    from scraper import register_meal, cancel_meal
+    from scraper import apply_changes_for_month
+    from itertools import groupby
 
     if not changes:
         return {"ok": True, "processed": 0, "meals": get_all_meals(session["user_key"]), "calendar_error": None}
+
+    # 月ごとにグループ化
+    sorted_changes = sorted([c.model_dump() for c in changes], key=lambda x: x["date"][:7])
+    months = {k: list(v) for k, v in groupby(sorted_changes, key=lambda x: x["date"][:7])}
 
     ub = await get_user_browser(session)
     async with ub.lock:
         page = await ub.new_page()
         try:
             failed = []
-            for item in changes:
-                if item.registered:
-                    ok = await register_meal(page, item.date, item.meal_type)
-                else:
-                    ok = await cancel_meal(page, item.date, item.meal_type)
-                if not ok:
-                    failed.append(f"{item.date} {item.meal_type}")
+            for month_key, month_items in months.items():
+                print(f"[batch] {month_key}: {len(month_items)}件")
+                failed += await apply_changes_for_month(page, month_items)
+        except Exception as e:
+            import traceback
+            print(f"[batch] EXCEPTION: {e}")
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"内部エラー: {e}")
         finally:
             await page.close()
 
@@ -181,29 +224,73 @@ async def _sync_calendar_bg(user_key: str):
 @app.post("/api/refresh")
 async def api_refresh(session: dict = Depends(current_session)):
     import time
-    from scraper import fetch_all_data
+    from scraper import fetch_eating_data
 
     t0 = time.time()
+    print(f"[refresh] 開始: {session['user_key']}")
     ub = await get_user_browser(session)
-    print(f"[Timing] get_user_browser: {time.time()-t0:.1f}s")
+    print(f"[refresh] ブラウザ取得: {time.time()-t0:.1f}s")
 
     async with ub.lock:
+        print(f"[refresh] ロック取得: {time.time()-t0:.1f}s")
         page = await ub.new_page()
         try:
-            t1 = time.time()
-            await fetch_all_data(page, session["user_key"])
-            print(f"[Timing] fetch_all_data: {time.time()-t1:.1f}s")
+            await fetch_eating_data(page, session["user_key"])
         finally:
             await page.close()
 
-    print(f"[Timing] /api/refresh 合計: {time.time()-t0:.1f}s")
-    asyncio.create_task(_sync_calendar_bg(session["user_key"]))
-    return {"ok": True, "meals": get_all_meals(session["user_key"]), "calendar_error": None}
+    print(f"[refresh] フェーズ1完了 (喫食のみ): {time.time()-t0:.1f}s → レスポンス返却")
+
+    from database import get_menu_cache_age_seconds
+    cache_age = get_menu_cache_age_seconds()
+    CACHE_TTL = 30 * 24 * 3600  # 30日
+    if cache_age is None or cache_age > CACHE_TTL:
+        print(f"[refresh] メニューキャッシュ期限切れ(age={cache_age}) → バックグラウンド取得開始")
+        asyncio.create_task(_fetch_menus_bg(session))
+    else:
+        print(f"[refresh] メニューキャッシュ有効(age={cache_age/3600:.1f}h) → phase2スキップ")
+        _menu_fetch_status[session["user_key"]] = {"status": "done", "message": f"キャッシュ使用({cache_age/3600:.1f}h前)"}
+
+    return {"ok": True, "meals": get_all_meals(session["user_key"])}
+
+
+async def _fetch_menus_bg(session: dict):
+    """メニューをバックグラウンドで取得してDB更新→カレンダー同期"""
+    import time
+    from scraper import fetch_and_update_menus
+    user_key = session["user_key"]
+    print(f"[menu_bg] タスク開始: {user_key}")
+    _menu_fetch_status[user_key] = {"status": "running", "message": "メニュー取得中..."}
+    t = time.time()
+    try:
+        ub = await get_user_browser(session)
+        print(f"[menu_bg] ブラウザ取得: {time.time()-t:.1f}s")
+        async with ub.lock:
+            print(f"[menu_bg] ロック取得: {time.time()-t:.1f}s")
+            page = await ub.new_page()
+            try:
+                await fetch_and_update_menus(page, user_key)
+            finally:
+                await page.close()
+        elapsed = time.time() - t
+        print(f"[menu_bg] 完了: {elapsed:.1f}s")
+        _menu_fetch_status[user_key] = {"status": "done", "message": "メニュー取得完了"}
+        asyncio.create_task(_sync_calendar_bg(user_key))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[menu_bg] エラー: {e}")
+        _menu_fetch_status[user_key] = {"status": "error", "message": str(e)}
 
 
 @app.get("/api/calendar-sync-status")
 async def api_calendar_sync_status(session: dict = Depends(current_session)):
     return _cal_sync_status.get(session["user_key"], {"status": "idle", "message": ""})
+
+
+@app.get("/api/menu-status")
+async def api_menu_status(session: dict = Depends(current_session)):
+    return _menu_fetch_status.get(session["user_key"], {"status": "idle", "message": ""})
 
 
 @app.post("/api/sync-calendar")

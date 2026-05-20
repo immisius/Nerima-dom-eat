@@ -58,6 +58,15 @@ def init_db():
                 value TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS menu_cache (
+                date TEXT NOT NULL,
+                meal_type TEXT NOT NULL,
+                menu TEXT NOT NULL DEFAULT '',
+                updated_at TEXT,
+                PRIMARY KEY (date, meal_type)
+            )
+        """)
 
 
 def get_setting(key: str) -> str | None:
@@ -108,6 +117,45 @@ def set_meal_registered(user_key: str, meal_date: str, meal_type: str, registere
             "UPDATE meals SET registered=?, updated_at=? WHERE user_key=? AND date=? AND meal_type=?",
             (int(registered), datetime.now().isoformat(), user_key, meal_date, meal_type)
         )
+
+
+def update_meal_menu(user_key: str, meal_date: str, meal_type: str, menu: str):
+    from datetime import datetime
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE meals SET menu=?, updated_at=? WHERE user_key=? AND date=? AND meal_type=?",
+            (menu, datetime.now().isoformat(), user_key, meal_date, meal_type)
+        )
+
+
+def upsert_menu_cache(meal_date: str, meal_type: str, menu: str):
+    from datetime import datetime
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO menu_cache (date, meal_type, menu, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(date, meal_type) DO UPDATE SET
+                menu=excluded.menu, updated_at=excluded.updated_at
+        """, (meal_date, meal_type, menu, datetime.now().isoformat()))
+
+
+def get_menu_cache() -> dict:
+    """全ユーザー共有メニューキャッシュ → {(date, meal_type): menu}"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT date, meal_type, menu FROM menu_cache WHERE menu != ''"
+        ).fetchall()
+        return {(r[0], r[1]): r[2] for r in rows}
+
+
+def get_menu_cache_age_seconds() -> float | None:
+    """キャッシュの最終更新からの経過秒数。空なら None"""
+    from datetime import datetime
+    with get_conn() as conn:
+        row = conn.execute("SELECT MAX(updated_at) FROM menu_cache").fetchone()
+        if not row or not row[0]:
+            return None
+        return (datetime.now() - datetime.fromisoformat(row[0])).total_seconds()
 
 
 def update_calendar_event_id(user_key: str, meal_date: str, meal_type: str, event_id: str):

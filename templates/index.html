@@ -209,6 +209,11 @@
     <div class="select-all-bar">
       <button id="select-all-btn" onclick="toggleSelectAll()">すべて □</button>
     </div>
+    <div class="cal-sync-bar hidden" id="menu-fetch-bar">
+      <div class="cal-sync-spinner" id="menu-fetch-spinner"></div>
+      <span id="menu-fetch-msg">メニュー取得中...</span>
+      <div class="cal-sync-progress"><div class="cal-sync-progress-fill" id="menu-fetch-fill"></div></div>
+    </div>
     <div class="cal-sync-bar hidden" id="cal-sync-bar">
       <div class="cal-sync-spinner" id="cal-sync-spinner"></div>
       <span id="cal-sync-msg">カレンダー同期中...</span>
@@ -216,6 +221,7 @@
     </div>
   </header>
   <div class="status-bar" id="status-bar">読み込み中...</div>
+  <div id="debug-info" style="font-size:11px;padding:4px 12px;background:#fffbe6;color:#666;border-bottom:1px solid #ffe;white-space:nowrap;overflow-x:auto;"></div>
   <div id="meal-list">
     <div class="loading">データを取得中...</div>
   </div>
@@ -243,8 +249,9 @@
       const saveBtn = document.getElementById("save-btn");
       const revertBtn = document.getElementById("revert-btn");
       if (count > 0) {
-        saveBtn.textContent = `保存 (${count}件)`;
+        saveBtn.textContent = _menuFetching ? `保存 (取得中...)` : `保存 (${count}件)`;
         saveBtn.classList.add("visible");
+        saveBtn.disabled = _menuFetching;
         revertBtn.classList.add("visible");
       } else {
         saveBtn.classList.remove("visible");
@@ -322,9 +329,33 @@
         return;
       }
 
+      // 当月以降のデータのみ表示（4月は除外）
+      const today = new Date();
+      const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+      const filteredMeals = meals.filter(m => m.date.slice(0, 7) >= currentMonth);
+      console.log(`[renderMeals] フィルター: ${meals.length}件 → ${filteredMeals.length}件 (${currentMonth}以降)`);
+
+      // デバッグ: 月別統計をコンソールとUIに表示
+      const byMonth = {};
+      for (const m of filteredMeals) {
+        const ym = m.date.slice(0, 7);
+        if (!byMonth[ym]) byMonth[ym] = {total: 0, changeable: 0, deadline: 0, holiday: 0};
+        byMonth[ym].total++;
+        if (!m.deadline_passed && !m.is_holiday) byMonth[ym].changeable++;
+        if (m.deadline_passed) byMonth[ym].deadline++;
+        if (m.is_holiday) byMonth[ym].holiday++;
+      }
+      console.log("[renderMeals] 月別統計:", JSON.stringify(byMonth));
+      const dbg = document.getElementById("debug-info");
+      if (dbg) {
+        dbg.textContent = Object.entries(byMonth).map(([ym, s]) =>
+          `${ym}: 全${s.total} 変更可${s.changeable} 締切${s.deadline} 休日${s.holiday}`
+        ).join(" / ");
+      }
+
       // store original state
       originalState = {};
-      for (const meal of meals) {
+      for (const meal of filteredMeals) {
         originalState[pendingKey(meal.date, meal.meal_type)] = !!meal.registered;
       }
 
@@ -334,13 +365,14 @@
       }
 
       const byDate = {};
-      for (const meal of meals) {
+      for (const meal of filteredMeals) {
         if (!byDate[meal.date]) byDate[meal.date] = [];
         byDate[meal.date].push(meal);
       }
 
+      const todayStr = new Date().toISOString().slice(0, 10);
       const html = Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b)).map(([date, dayMeals]) => {
-        const isToday = date === today;
+        const isToday = date === todayStr;
         const mealCards = dayMeals.map(meal => {
           const key = pendingKey(meal.date, meal.meal_type);
           const deadlinePassed = meal.deadline_passed;
@@ -348,18 +380,13 @@
           const hasPending = key in pendingChanges;
           const desiredState = hasPending ? pendingChanges[key].registered : registered;
 
-          const noMenu = !meal.menu;
-
           let badgeClass, badgeText;
           if (meal.is_holiday) {
             badgeClass = "badge-holiday";
             badgeText = "お休み";
-          } else if (noMenu) {
-            badgeClass = "badge-deadline-no";
-            badgeText = "欠食";
           } else if (deadlinePassed) {
             badgeClass = registered ? "badge-deadline-yes" : "badge-deadline-no";
-            badgeText = registered ? "確定" : "欠食";
+            badgeText = registered ? "食べる" : "食べない";
           } else if (hasPending) {
             badgeClass = "badge-pending";
             badgeText = desiredState ? "提出予定" : "取消予定";
@@ -371,12 +398,13 @@
             badgeText = "未提出";
           }
 
-          const menuText = noMenu
-            ? `<div class="meal-menu empty">欠食</div>`
-            : `<div class="meal-menu">${meal.menu}</div>`;
+          const menuText = meal.menu
+            ? `<div class="meal-menu">${meal.menu}</div>`
+            : meal.is_holiday ? ""
+            : `<div class="meal-menu empty" style="color:#aaa">---</div>`;
 
           let toggleHtml = "";
-          if (!deadlinePassed && !meal.is_holiday && !noMenu) {
+          if (!deadlinePassed && !meal.is_holiday) {
             const checked = desiredState ? "checked" : "";
             toggleHtml = `<div class="meal-toggle">
               <label class="toggle-label">
@@ -390,7 +418,7 @@
 
           const isPending = hasPending;
           return `
-            <div class="meal-card ${isToday ? 'today' : ''} ${meal.is_holiday || noMenu ? 'holiday' : (deadlinePassed ? 'deadline-passed' : '')} ${isPending ? 'pending' : ''}">
+            <div class="meal-card ${isToday ? 'today' : ''} ${meal.is_holiday ? 'holiday' : (deadlinePassed ? 'deadline-passed' : '')} ${isPending ? 'pending' : ''}">
               <div class="meal-header">
                 <span class="meal-type-label">${meal.meal_type}</span>
                 <span class="meal-badge ${badgeClass}">${badgeText}</span>
@@ -469,22 +497,85 @@
       const btn = document.getElementById("refresh-btn");
       btn.disabled = true;
       btn.textContent = "取得中...";
-      document.getElementById("status-bar").textContent = "D-Portからデータ取得中...";
+      document.getElementById("status-bar").textContent = "D-Portから喫食状況を取得中...";
       try {
+        // フェーズ1: 喫食状況（高速）
         const res = await fetch("/api/refresh", { method: "POST" });
         if (handleUnauthorized(res)) return;
         const data = await res.json();
         pendingChanges = {};
         renderMeals(data.meals);
-        setStatus(data.meals, "✅ 更新完了");
+        setStatus(data.meals, "✅ 喫食状況を取得");
         scrollToToday();
-        startCalSyncPolling();
+        // フェーズ2: メニュー取得（バックグラウンド）
+        startMenuFetchPolling();
       } catch (e) {
         document.getElementById("status-bar").textContent = "❌ 更新に失敗しました";
         document.getElementById("status-bar").style.color = "#c0392b";
       }
       btn.disabled = false;
-      btn.textContent = "更新";
+      btn.textContent = "D-Port同期";
+    }
+
+    let _menuFetchTimer = null;
+    let _menuFetching = false;
+
+    function setMenuFetching(fetching) {
+      _menuFetching = fetching;
+      const saveBtn = document.getElementById("save-btn");
+      if (fetching) {
+        saveBtn.disabled = true;
+        saveBtn.title = "メニュー取得完了後に保存できます";
+      } else {
+        saveBtn.disabled = false;
+        saveBtn.title = "";
+      }
+      updateSaveButton();
+    }
+
+    function startMenuFetchPolling() {
+      const bar = document.getElementById("menu-fetch-bar");
+      const msg = document.getElementById("menu-fetch-msg");
+      const spinner = document.getElementById("menu-fetch-spinner");
+      const fill = document.getElementById("menu-fetch-fill");
+
+      bar.className = "cal-sync-bar";
+      msg.textContent = "メニュー取得中... (この間は保存できません)";
+      spinner.style.display = "";
+      fill.style.width = "30%";
+      setMenuFetching(true);
+
+      if (_menuFetchTimer) clearInterval(_menuFetchTimer);
+      _menuFetchTimer = setInterval(async () => {
+        try {
+          const res = await fetch("/api/menu-status");
+          if (res.status === 401) { clearInterval(_menuFetchTimer); setMenuFetching(false); return; }
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.status === "running") return;
+
+          clearInterval(_menuFetchTimer);
+          spinner.style.display = "none";
+          fill.style.width = "100%";
+          setMenuFetching(false);
+          if (data.status === "done") {
+            bar.className = "cal-sync-bar done";
+            msg.textContent = "🍽️ メニュー取得完了 - 保存できます";
+            // 最新データ（メニュー付き）に更新
+            const r = await fetch("/api/meals");
+            if (r.ok) {
+              const meals = await r.json();
+              renderMeals(meals);
+              setStatus(meals, "✅ メニュー更新済");
+            }
+            startCalSyncPolling();
+          } else if (data.status === "error") {
+            bar.className = "cal-sync-bar error";
+            msg.textContent = "⚠️ メニュー取得失敗 - 保存できます";
+            startCalSyncPolling();
+          }
+        } catch (e) {}
+      }, 2000);
     }
 
     let _calSyncTimer = null;
@@ -504,6 +595,7 @@
       _calSyncTimer = setInterval(async () => {
         try {
           const res = await fetch("/api/calendar-sync-status");
+          if (res.status === 401) { clearInterval(_calSyncTimer); return; }
           if (!res.ok) return;
           const data = await res.json();
 
