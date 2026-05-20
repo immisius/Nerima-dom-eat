@@ -17,6 +17,44 @@ BASE_URL = "https://d-port.communication-base.com"
 EATING_URL = f"{BASE_URL}/#/eating"
 
 
+async def check_available_months(page) -> tuple[str, str]:
+    """喫食登録ページから登録可能な月の範囲を確認"""
+    await page.goto(EATING_URL, wait_until="networkidle")
+    await page.wait_for_selector("tbody.MuiTableBody-root", timeout=15000)
+    await page.wait_for_timeout(800)
+
+    months = []
+    for i in range(12):
+        month_text = await page.evaluate("""
+            () => {
+                const span = Array.from(document.querySelectorAll('span'))
+                    .find(s => /\\d+月/.test(s.textContent.trim()));
+                return span ? span.textContent.trim() : null;
+            }
+        """)
+
+        if not month_text:
+            break
+
+        next_btn = await page.locator("xpath=//span[contains(., '月')]/parent::*/button[last()]")
+        is_enabled = not await next_btn.is_disabled()
+        months.append((month_text, is_enabled))
+
+        if not is_enabled:
+            break
+
+        await next_btn.click()
+        await page.wait_for_timeout(500)
+
+    if months:
+        first_month = months[0][0]
+        last_month = months[-1][0]
+        print(f"[check_months] 登録可能月: {first_month} 〜 {last_month}")
+        return first_month, last_month
+
+    return None, None
+
+
 async def verify_credentials(company_code: str, user_id_str: str, password: str) -> bool:
     """認証情報の検証のみ（保存しない）"""
     async with async_playwright() as p:

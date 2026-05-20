@@ -89,7 +89,27 @@ async def api_login(body: LoginRequest, response: Response):
     user_key = f"{body.company_code}:{body.user_id}"
     create_session(user_key, body.company_code, body.user_id, body.password, token)
     response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax")
+
+    # バックグラウンドで登録可能月を確認
+    asyncio.create_task(_check_available_months_bg(token, body.company_code, body.user_id))
+
     return {"ok": True}
+
+
+async def _check_available_months_bg(token: str, company_code: str, user_id: str):
+    """バックグラウンドで登録可能月を確認"""
+    try:
+        from scraper import check_available_months
+        ub = browser_manager.get(token)
+        if ub:
+            page = await ub.new_page()
+            try:
+                first_month, last_month = await check_available_months(page)
+                print(f"[Login] {company_code}:{user_id} - 登録可能月: {first_month} 〜 {last_month}")
+            finally:
+                await page.close()
+    except Exception as e:
+        print(f"[check_months_bg] エラー: {e}")
 
 
 @app.post("/api/logout")
